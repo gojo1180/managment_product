@@ -6,22 +6,22 @@
       "use": "@vercel/python"
     },
     {
-      "src": "index.html",
+      "src": "template/index.html",
       "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/auth/(.*)",
-      "dest": "main.py"
-    },
-    {
       "src": "/products/(.*)",
       "dest": "main.py"
     },
     {
+      "src": "/auth/(.*)",
+      "dest": "main.py"
+    },
+    {
       "src": "/(.*)",
-      "dest": "index.html"
+      "dest": "template/index.html"
     }
   ]
 }

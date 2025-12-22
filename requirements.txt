@@ -1,7 +1,7 @@
 fastapi
-    uvicorn
-    supabase
-    python-dotenv
-    pydantic[email]
-    zxing-cpp
-    Pillow
+uvicorn
+supabase
+python-dotenv
+pydantic[email]
+zxing-cpp
+Pillow
