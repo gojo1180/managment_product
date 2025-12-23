@@ -10,7 +10,7 @@
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://unpkg.com/@ericblade/quagga2/dist/quagga.js"></script>
     
     <style>
         [v-cloak] { display: none; }
@@ -22,19 +22,33 @@
         }
 
         /* Agar kamera tidak terpotong */
-        #reader { 
-            border: none !important; 
-            width: 100% !important; 
-            background: black; 
-            border-radius: 1rem;
-            overflow: hidden;
-        }
-        #reader video { 
-            border-radius: 1rem; 
-            object-fit: contain !important;
-            width: 100% !important; 
-            height: auto !important; 
-        }
+       #scanner {
+    width: 100%;
+    max-width: 420px;        /* biar gak kepanjangan di desktop */
+    height: 320px;           /* KUNCI UTAMA */
+    margin: 0 auto;
+    background: black;
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+}
+
+#scanner video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+}
+
+.scan-area {
+    position: absolute;
+    width: 70%;
+    height: 50%;
+    border: 2px dashed #22c55e;
+    border-radius: 12px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
         #reader__dashboard, #reader__status_span { display: none !important; }
 
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
@@ -224,7 +238,7 @@
 
                     <!-- Layout Kamera -->
                     <div class="bg-black rounded-2xl overflow-hidden mb-4 relative border-2 border-slate-100 shadow-inner min-h-[250px] flex items-center justify-center">
-                        <div id="reader" class="w-full h-full"></div>
+                        <div id="scanner" class="w-full h-full"></div>
                         <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
                             <div class="w-48 h-48 border-2 border-emerald-400 border-dashed rounded-2xl opacity-40"></div>
                         </div>
@@ -315,7 +329,7 @@
                 const searchQuery = ref('');
                 const toasts = ref([]);
                 const isEditing = ref(false);
-                const html5QrCode = ref(null);
+                const quaggaRunning = ref(false);
                 
                 const cameras = ref([]);
                 const selectedCameraId = ref(null);
@@ -428,66 +442,77 @@
 
                 // --- SCANNER & QR ---
                 const openScanModal = async () => {
-                    modals.value.scan = true;
-                    scanManualInput.value = '';
-                    nextTick(async () => {
-                        try {
-                            const devices = await Html5Qrcode.getCameras();
-                            if (devices && devices.length > 0) {
-                                cameras.value = devices;
-                                const backCam = devices.find(d => d.label.toLowerCase().includes('back'));
-                                selectedCameraId.value = backCam ? backCam.id : devices[devices.length - 1].id;
-                                startScanner();
-                            } else {
-                                showToast("Kamera tidak terdeteksi.", "error");
-                            }
-                        } catch (err) { showToast("Izin kamera ditolak.", "error"); }
-                        lucide.createIcons();
-                    });
-                };
+    modals.value.scan = true;
+    scanManualInput.value = '';
 
-                const startScanner = async () => {
-                    if (!selectedCameraId.value) return;
-                    
-                    // Pastikan instance lama dibersihkan jika ada
-                    if (html5QrCode.value) {
-                        try {
-                            await html5QrCode.value.stop();
-                        } catch (e) {}
-                        html5QrCode.value = null;
-                    }
+    nextTick(() => {
+        startQuaggaScanner();
+        lucide.createIcons();
+    });
+};
 
-                    // Inisialisasi instance baru
-                    html5QrCode.value = new Html5Qrcode("reader");
-                    
-                    try {
-                        await html5QrCode.value.start(
-                            selectedCameraId.value, 
-                            { fps: 20, qrbox: 250 }, 
-                            (decodedText) => handleScanResult(decodedText)
-                        );
-                    } catch (err) {
-                        console.error("Gagal memulai scanner:", err);
-                        // Jika error NotReadableError, beri jeda dan coba lagi atau tampilkan pesan ramah
-                        if (err.name === 'NotReadableError') {
-                            showToast("Kamera sedang digunakan aplikasi lain.", "error");
-                        }
-                    }
-                };
+               const startQuaggaScanner = () => {
+    if (quaggaRunning.value) return;
 
-                const restartScanner = async () => {
-                    await startScanner();
-                };
+    Quagga.init({
+        inputStream: {
+            type: "LiveStream",
+            target: document.querySelector("#scanner"),
+            constraints: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: "environment"
+            }
+        },
+        locator: {
+            patchSize: "medium",
+            halfSample: true
+        },
+        decoder: {
+            readers: [
+                "ean_reader",
+                "ean_8_reader",
+                "code_128_reader",
+                "upc_reader"
+            ]
+        },
+        locate: true
+    }, err => {
+        if (err) {
+            showToast("Gagal mengakses kamera.", "error");
+            console.error(err);
+            return;
+        }
+        Quagga.start();
+        quaggaRunning.value = true;
+    });
 
-                const closeScanModal = async () => {
-                    if (html5QrCode.value) {
-                        try { 
-                            await html5QrCode.value.stop(); 
-                            html5QrCode.value = null;
-                        } catch (e) {}
-                    }
-                    modals.value.scan = false;
-                };
+    Quagga.onDetected(onBarcodeDetected);
+};
+
+               const onBarcodeDetected = (data) => {
+    if (!data?.codeResult?.code) return;
+
+    const code = data.codeResult.code;
+
+    // stop agar tidak double scan
+    stopQuaggaScanner();
+
+    handleScanResult(code);
+};
+
+const stopQuaggaScanner = () => {
+    if (quaggaRunning.value) {
+        Quagga.stop();
+        Quagga.offDetected(onBarcodeDetected);
+        quaggaRunning.value = false;
+    }
+};
+
+                const closeScanModal = () => {
+    stopQuaggaScanner();
+    modals.value.scan = false;
+};
 
                 const handleScanResult = async (code) => {
                     if (!code) return;
@@ -564,7 +589,7 @@
                 return {
                     session, authLoading, isRegisterMode, authForm, authError, products, modals, form, searchQuery, toasts, isEditing,
                     cameras, selectedCameraId, scanManualInput,
-                    handleLogin, handleSignUp, handleLogout, toggleAuthMode, openScanModal, closeScanModal, restartScanner, 
+                    handleLogin, handleSignUp, handleLogout, toggleAuthMode, openScanModal, closeScanModal,
                     openManualModal, submitManual, adjustStock, deleteProduct, triggerFileInput, handleFileSelect, 
                     totalStock, uniqueCategories, filteredProducts, downloadQRCode, handleScanResult
                 };
