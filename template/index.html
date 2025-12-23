@@ -500,20 +500,19 @@
                     html5QrCode.value = new Html5Qrcode("reader");
                     
                     try {
-                        // KONFIGURASI FINAL FIX:
+                        // KONFIGURASI YANG LEBIH STABIL UNTUK BROWSER HP
                         const config = { 
-                            fps: 10, // FPS rendah lebih stabil untuk hp kentang
-                            // qrbox: undefined, // SANGAT PENTING: Hapus qrbox agar scan full screen
-                            aspectRatio: undefined, // Biarkan kamera menentukan rasio alami
+                            fps: 15, // FPS 15 cukup responsif
+                            qrbox: { width: 250, height: 250 }, // KITA KEMBALIKAN qrbox agar fokus di tengah saja (Scanning area lebih kecil = proses lebih ringan)
+                            aspectRatio: 1.0, // Paksa rasio 1:1 agar koordinat visual cocok dengan area proses
                             experimentalFeatures: {
-                                useBarCodeDetectorIfSupported: true // Gunakan native hardware acceleration (Chrome Android)
+                                useBarCodeDetectorIfSupported: true 
                             },
                             videoConstraints: {
                                 facingMode: "environment", // Paksa kamera belakang
-                                // Meminta resolusi HD agar QR jelas terbaca
-                                width: { min: 640, ideal: 1280, max: 1920 },
-                                height: { min: 480, ideal: 720, max: 1080 },
-                                focusMode: "continuous" // Paksa autofocus
+                                // Kita HAPUS constraint resolusi yang ketat (width/height min/max)
+                                // Biarkan browser memilih resolusi native terbaik kamera agar tidak terjadi distorsi/blank
+                                focusMode: "continuous" 
                             }
                         };
 
