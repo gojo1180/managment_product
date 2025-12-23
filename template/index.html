@@ -10,7 +10,6 @@
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <!-- Menggunakan versi terbaru html5-qrcode untuk dukungan fitur yang lebih baik -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     
     <style>
@@ -22,31 +21,45 @@
             background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         }
 
-        /* PERBAIKAN CSS KAMERA */
+        /* PERBAIKAN CSS KAMERA - FINAL FIX */
         #reader { 
             border: none !important; 
             width: 100% !important; 
             height: 100% !important;
-            background: black; 
+            background: #000; 
             border-radius: 1rem;
             overflow: hidden;
             position: relative;
         }
         
         #reader video { 
-            border-radius: 1rem; 
-            /* Mengubah contain ke cover agar full screen dan koordinat akurat */
+            /* Kita gunakan cover agar full screen, scanner akan membaca seluruh frame video */
             object-fit: cover !important; 
             width: 100% !important; 
             height: 100% !important; 
+            border-radius: 1rem;
         }
         
-        /* Menyembunyikan elemen bawaan library yang tidak diinginkan */
         #reader__dashboard, #reader__status_span { display: none !important; }
 
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        
+        /* Animasi scan line agar user tahu sistem sedang bekerja */
+        .scan-line {
+            width: 100%;
+            height: 2px;
+            background: #34d399;
+            box-shadow: 0 0 4px #34d399;
+            position: absolute;
+            animation: scanning 2s infinite linear;
+        }
+        @keyframes scanning {
+            0% { top: 10%; opacity: 0; }
+            50% { opacity: 1; }
+            100% { top: 90%; opacity: 0; }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans">
@@ -232,13 +245,20 @@
                     <!-- Layout Kamera -->
                     <div class="bg-black rounded-2xl overflow-hidden mb-4 relative border-2 border-slate-100 shadow-inner h-[300px] flex items-center justify-center">
                         <div id="reader" class="w-full h-full"></div>
-                        <!-- Overlay Visual untuk memandu user -->
+                        
+                        <!-- PANDUAN VISUAL MURNI (CSS) - Scanner tetap membaca full layar -->
                         <div class="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
-                            <div class="w-64 h-64 border-2 border-emerald-400 border-dashed rounded-2xl opacity-60 relative shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]">
-                                <div class="absolute top-2 left-2 w-4 h-4 border-t-4 border-l-4 border-emerald-500 rounded-tl-lg"></div>
-                                <div class="absolute top-2 right-2 w-4 h-4 border-t-4 border-r-4 border-emerald-500 rounded-tr-lg"></div>
-                                <div class="absolute bottom-2 left-2 w-4 h-4 border-b-4 border-l-4 border-emerald-500 rounded-bl-lg"></div>
-                                <div class="absolute bottom-2 right-2 w-4 h-4 border-b-4 border-r-4 border-emerald-500 rounded-br-lg"></div>
+                            <!-- Garis scan bergerak -->
+                            <div class="absolute inset-0 w-full h-full overflow-hidden">
+                                <div class="scan-line"></div>
+                            </div>
+                            
+                            <!-- Kotak Panduan -->
+                            <div class="w-64 h-64 border-2 border-emerald-400/50 border-dashed rounded-2xl relative">
+                                <div class="absolute top-[-2px] left-[-2px] w-6 h-6 border-t-4 border-l-4 border-emerald-500 rounded-tl-lg"></div>
+                                <div class="absolute top-[-2px] right-[-2px] w-6 h-6 border-t-4 border-r-4 border-emerald-500 rounded-tr-lg"></div>
+                                <div class="absolute bottom-[-2px] left-[-2px] w-6 h-6 border-b-4 border-l-4 border-emerald-500 rounded-bl-lg"></div>
+                                <div class="absolute bottom-[-2px] right-[-2px] w-6 h-6 border-b-4 border-r-4 border-emerald-500 rounded-br-lg"></div>
                             </div>
                         </div>
                     </div>
@@ -254,7 +274,7 @@
                             <i data-lucide="image" class="w-4 h-4"></i> Unggah Foto QR
                         </button>
                         <input type="file" id="qr-file" accept="image/*" class="hidden" @change="handleFileSelect">
-                        <p class="text-center text-[10px] text-slate-400 uppercase font-bold tracking-widest mt-1 italic">Posisikan kode di tengah area kotak</p>
+                        <p class="text-center text-[10px] text-slate-400 uppercase font-bold tracking-widest mt-1 italic">Pastikan QR Code fokus & terang</p>
                     </div>
                 </div>
             </div>
@@ -439,22 +459,26 @@
                     } catch (e) { showToast("Gagal menghapus produk.", "error"); }
                 };
 
-                // --- SCANNER & QR OPTIMIZED ---
+                // --- SCANNER & QR FIX ---
                 const openScanModal = async () => {
                     modals.value.scan = true;
                     scanManualInput.value = '';
                     nextTick(async () => {
                         try {
+                            // Mendapatkan daftar kamera
                             const devices = await Html5Qrcode.getCameras();
                             if (devices && devices.length > 0) {
                                 cameras.value = devices;
-                                // Coba cari kamera yang labelnya "back" atau "rear" untuk kamera belakang
+                                
+                                // Prioritaskan kamera belakang berdasarkan label
                                 const backCam = devices.find(d => {
                                     const label = d.label.toLowerCase();
                                     return label.includes('back') || label.includes('rear') || label.includes('environment');
                                 });
-                                // Jika ada banyak kamera belakang, biasanya yang terakhir adalah lensa utama, tapi kita prioritaskan deteksi label
+                                
+                                // Jika tidak ada label 'back', gunakan kamera terakhir (biasanya belakang di hp)
                                 selectedCameraId.value = backCam ? backCam.id : devices[devices.length - 1].id;
+                                
                                 startScanner();
                             } else {
                                 showToast("Kamera tidak terdeteksi.", "error");
@@ -467,6 +491,7 @@
                 const startScanner = async () => {
                     if (!selectedCameraId.value) return;
                     
+                    // Stop scanner lama jika ada
                     if (html5QrCode.value) {
                         try { await html5QrCode.value.stop(); } catch (e) {}
                         html5QrCode.value = null;
@@ -475,21 +500,20 @@
                     html5QrCode.value = new Html5Qrcode("reader");
                     
                     try {
-                        // PERBAIKAN: Menggunakan konfigurasi dinamis untuk akurasi scan yang lebih baik
+                        // KONFIGURASI FINAL FIX:
                         const config = { 
-                            fps: 15, // FPS 15 sudah cukup mulus dan lebih ringan
-                            qrbox: (viewfinderWidth, viewfinderHeight) => {
-                                // Menggunakan 70% dari sisi terpendek sebagai area scan (Square)
-                                const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                                return {
-                                    width: Math.floor(minEdge * 0.7),
-                                    height: Math.floor(minEdge * 0.7)
-                                };
+                            fps: 10, // FPS rendah lebih stabil untuk hp kentang
+                            // qrbox: undefined, // SANGAT PENTING: Hapus qrbox agar scan full screen
+                            aspectRatio: undefined, // Biarkan kamera menentukan rasio alami
+                            experimentalFeatures: {
+                                useBarCodeDetectorIfSupported: true // Gunakan native hardware acceleration (Chrome Android)
                             },
-                            aspectRatio: 1.0, // Memaksa rasio 1:1 agar koordinat visual cocok dengan sensor
                             videoConstraints: {
-                                focusMode: "continuous", // Memaksa auto-focus terus menerus (penting!)
-                                facingMode: "environment" // Prioritaskan kamera belakang
+                                facingMode: "environment", // Paksa kamera belakang
+                                // Meminta resolusi HD agar QR jelas terbaca
+                                width: { min: 640, ideal: 1280, max: 1920 },
+                                height: { min: 480, ideal: 720, max: 1080 },
+                                focusMode: "continuous" // Paksa autofocus
                             }
                         };
 
@@ -498,16 +522,12 @@
                             config, 
                             (decodedText) => handleScanResult(decodedText),
                             (errorMessage) => {
-                                // Error scan per frame, diabaikan agar console tidak penuh
+                                // Biarkan kosong agar console bersih
                             }
                         );
                     } catch (err) {
-                        console.error("Gagal memulai scanner:", err);
-                        if (err.name === 'NotReadableError') {
-                            showToast("Kamera sedang sibuk. Coba refresh halaman.", "error");
-                        } else {
-                            showToast("Gagal mengakses kamera.", "error");
-                        }
+                        console.error("Gagal start camera:", err);
+                        showToast("Gagal akses kamera. Coba refresh.", "error");
                     }
                 };
 
@@ -527,16 +547,28 @@
 
                 const handleScanResult = async (code) => {
                     if (!code) return;
+                    
+                    // Pause scanner sementara
+                    if (html5QrCode.value) {
+                         try { await html5QrCode.value.pause(); } catch(e){}
+                    }
+
                     try {
                         const res = await axios.post(`${API_URL}/products/scan`, { barcode: code }, getAuthHeader());
                         if (res.data.found) {
+                            // Tutup modal scan dulu baru buka modal edit
+                            await closeScanModal();
                             openManualModal(res.data.data);
                         } else {
+                            await closeScanModal();
                             openManualModal({ barcode: code });
                             showToast("QR baru terdeteksi!");
                         }
-                    } catch (e) { showToast("Kesalahan sistem pemindaian.", "error"); }
-                    finally { await closeScanModal(); }
+                    } catch (e) { 
+                        showToast("Kesalahan sistem pemindaian.", "error");
+                        // Jika error, resume scanner lagi
+                        if (html5QrCode.value) html5QrCode.value.resume();
+                    }
                 };
 
                 const triggerFileInput = () => document.getElementById('qr-file').click();
