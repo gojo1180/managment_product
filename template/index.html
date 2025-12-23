@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StokMaster Pro - Manajemen Inventaris</title>
+    <title>StokManagger Manajemen Inventaris</title>
     <!-- Library Eksternal -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
-    <script src="https://unpkg.com/@ericblade/quagga2/dist/quagga.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     
     <style>
         [v-cloak] { display: none; }
@@ -22,33 +22,19 @@
         }
 
         /* Agar kamera tidak terpotong */
-       #scanner {
-    width: 100%;
-    max-width: 420px;        /* biar gak kepanjangan di desktop */
-    height: 320px;           /* KUNCI UTAMA */
-    margin: 0 auto;
-    background: black;
-    border-radius: 16px;
-    overflow: hidden;
-    position: relative;
-}
-
-#scanner video {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: cover !important;
-}
-
-.scan-area {
-    position: absolute;
-    width: 70%;
-    height: 50%;
-    border: 2px dashed #22c55e;
-    border-radius: 12px;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-}
+        #reader { 
+            border: none !important; 
+            width: 100% !important; 
+            background: black; 
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+        #reader video { 
+            border-radius: 1rem; 
+            object-fit: contain !important;
+            width: 100% !important; 
+            height: auto !important; 
+        }
         #reader__dashboard, #reader__status_span { display: none !important; }
 
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
@@ -67,7 +53,7 @@
                     <div class="bg-indigo-100 text-indigo-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
                         <i data-lucide="package" class="w-8 h-8"></i>
                     </div>
-                    <h2 class="text-3xl font-black text-slate-800 tracking-tight">StokMaster</h2>
+                    <h2 class="text-3xl font-black text-slate-800 tracking-tight">StokManagger</h2>
                     <p class="text-slate-500 mt-2">{{ isRegisterMode ? 'Daftar akun baru' : 'Masuk ke gudang anda' }}</p>
                 </div>
 
@@ -116,7 +102,7 @@
                         <div class="bg-indigo-600 p-2 rounded-lg text-white">
                             <i data-lucide="package" class="w-6 h-6"></i>
                         </div>
-                        <h1 class="text-xl font-bold tracking-tight text-slate-800">StokMaster</h1>
+                        <h1 class="text-xl font-bold tracking-tight text-slate-800">StokManagger</h1>
                     </div>
                     <div class="flex gap-3 items-center">
                         <div class="hidden md:flex flex-col items-end mr-2 text-right">
@@ -238,7 +224,7 @@
 
                     <!-- Layout Kamera -->
                     <div class="bg-black rounded-2xl overflow-hidden mb-4 relative border-2 border-slate-100 shadow-inner min-h-[250px] flex items-center justify-center">
-                        <div id="scanner" class="w-full h-full"></div>
+                        <div id="reader" class="w-full h-full"></div>
                         <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
                             <div class="w-48 h-48 border-2 border-emerald-400 border-dashed rounded-2xl opacity-40"></div>
                         </div>
@@ -329,7 +315,7 @@
                 const searchQuery = ref('');
                 const toasts = ref([]);
                 const isEditing = ref(false);
-                const quaggaRunning = ref(false);
+                const html5QrCode = ref(null);
                 
                 const cameras = ref([]);
                 const selectedCameraId = ref(null);
@@ -442,77 +428,66 @@
 
                 // --- SCANNER & QR ---
                 const openScanModal = async () => {
-    modals.value.scan = true;
-    scanManualInput.value = '';
+                    modals.value.scan = true;
+                    scanManualInput.value = '';
+                    nextTick(async () => {
+                        try {
+                            const devices = await Html5Qrcode.getCameras();
+                            if (devices && devices.length > 0) {
+                                cameras.value = devices;
+                                const backCam = devices.find(d => d.label.toLowerCase().includes('back'));
+                                selectedCameraId.value = backCam ? backCam.id : devices[devices.length - 1].id;
+                                startScanner();
+                            } else {
+                                showToast("Kamera tidak terdeteksi.", "error");
+                            }
+                        } catch (err) { showToast("Izin kamera ditolak.", "error"); }
+                        lucide.createIcons();
+                    });
+                };
 
-    nextTick(() => {
-        startQuaggaScanner();
-        lucide.createIcons();
-    });
-};
+                const startScanner = async () => {
+                    if (!selectedCameraId.value) return;
+                    
+                    // Pastikan instance lama dibersihkan jika ada
+                    if (html5QrCode.value) {
+                        try {
+                            await html5QrCode.value.stop();
+                        } catch (e) {}
+                        html5QrCode.value = null;
+                    }
 
-               const startQuaggaScanner = () => {
-    if (quaggaRunning.value) return;
+                    // Inisialisasi instance baru
+                    html5QrCode.value = new Html5Qrcode("reader");
+                    
+                    try {
+                        await html5QrCode.value.start(
+                            selectedCameraId.value, 
+                            { fps: 20, qrbox: 250 }, 
+                            (decodedText) => handleScanResult(decodedText)
+                        );
+                    } catch (err) {
+                        console.error("Gagal memulai scanner:", err);
+                        // Jika error NotReadableError, beri jeda dan coba lagi atau tampilkan pesan ramah
+                        if (err.name === 'NotReadableError') {
+                            showToast("Kamera sedang digunakan aplikasi lain.", "error");
+                        }
+                    }
+                };
 
-    Quagga.init({
-        inputStream: {
-            type: "LiveStream",
-            target: document.querySelector("#scanner"),
-            constraints: {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                facingMode: "environment"
-            }
-        },
-        locator: {
-            patchSize: "medium",
-            halfSample: true
-        },
-        decoder: {
-            readers: [
-                "ean_reader",
-                "ean_8_reader",
-                "code_128_reader",
-                "upc_reader"
-            ]
-        },
-        locate: true
-    }, err => {
-        if (err) {
-            showToast("Gagal mengakses kamera.", "error");
-            console.error(err);
-            return;
-        }
-        Quagga.start();
-        quaggaRunning.value = true;
-    });
+                const restartScanner = async () => {
+                    await startScanner();
+                };
 
-    Quagga.onDetected(onBarcodeDetected);
-};
-
-               const onBarcodeDetected = (data) => {
-    if (!data?.codeResult?.code) return;
-
-    const code = data.codeResult.code;
-
-    // stop agar tidak double scan
-    stopQuaggaScanner();
-
-    handleScanResult(code);
-};
-
-const stopQuaggaScanner = () => {
-    if (quaggaRunning.value) {
-        Quagga.stop();
-        Quagga.offDetected(onBarcodeDetected);
-        quaggaRunning.value = false;
-    }
-};
-
-                const closeScanModal = () => {
-    stopQuaggaScanner();
-    modals.value.scan = false;
-};
+                const closeScanModal = async () => {
+                    if (html5QrCode.value) {
+                        try { 
+                            await html5QrCode.value.stop(); 
+                            html5QrCode.value = null;
+                        } catch (e) {}
+                    }
+                    modals.value.scan = false;
+                };
 
                 const handleScanResult = async (code) => {
                     if (!code) return;
@@ -589,7 +564,7 @@ const stopQuaggaScanner = () => {
                 return {
                     session, authLoading, isRegisterMode, authForm, authError, products, modals, form, searchQuery, toasts, isEditing,
                     cameras, selectedCameraId, scanManualInput,
-                    handleLogin, handleSignUp, handleLogout, toggleAuthMode, openScanModal, closeScanModal,
+                    handleLogin, handleSignUp, handleLogout, toggleAuthMode, openScanModal, closeScanModal, restartScanner, 
                     openManualModal, submitManual, adjustStock, deleteProduct, triggerFileInput, handleFileSelect, 
                     totalStock, uniqueCategories, filteredProducts, downloadQRCode, handleScanResult
                 };
